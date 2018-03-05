@@ -2,7 +2,6 @@
 
 module Bitcoin
   module Protocol
-
     class Parser
       attr_reader :stats
 
