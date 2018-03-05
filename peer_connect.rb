@@ -51,6 +51,7 @@ module Bitcoin
       ].join
     end
 
+    # https://en.bitcoin.it/wiki/Protocol_documentation#version
     def self.pkt(command, payload)
       cmd      = command.ljust(12, "\x00")[0...12]
       length   = [payload.bytesize].pack("V")
@@ -78,6 +79,11 @@ module Bitcoin
       # @parser.parse(data)
     end
 
+    def unbind
+      puts "Disconnected"
+      exit
+    end
+
     # https://bitcoin.org/en/developer-reference#version
     def create_version_message
       fields = {                                                                           
@@ -88,8 +94,7 @@ module Bitcoin
         to: @sockaddr.reverse.join(":"),
         last_block: 0,
         time: Time.now.tv_sec,
-        # user_agent: "/bitcoin-ruby-lite:0.1/",
-        user_agent: "/bitcoin-ruby:0.0.18/",
+        user_agent: "/bitcoin-ruby-lite:0.1/",
         relay: true
       }
       payload = NetworkHelper.create_version_message_payload fields
@@ -111,8 +116,20 @@ MAINNET_PORT = 8333
 EventMachine::run do
   connections = []
   begin
-    random_seed = SEEDS.sample
-    addresses = Resolv::DNS.new.getaddresses(random_seed)
+    all_seeds = SEEDS.dup
+    random_seed = all_seeds.sample
+    addresses = nil
+    loop do
+      addresses = Resolv::DNS.new.getaddresses(random_seed)
+      if addresses != []
+        break
+      end
+      all_seeds.delete(random_seed)
+      if all_seeds.empty?
+        raise "All seeds exhausted"
+      end
+      random_seed = all_seeds.sample
+    end
     random_peer_addr = addresses.sample
     peer_host = random_peer_addr.to_s
   rescue Errno::ECONNREFUSED => e
