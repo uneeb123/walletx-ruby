@@ -123,8 +123,7 @@ module Bitcoin
           last_block: last_block,
           relay: relay
         }
-        require 'pry'; binding.pry
-        # @h.on_version(@version)
+        @h.receive_version_message fields
       end
 
       def parse_alert(payload)

@@ -1,3 +1,5 @@
+require 'pp'
+
 require_relative 'packing_helper'
 require_relative 'parser'
 
@@ -10,11 +12,13 @@ module Bitcoin
 
     def initialize connection_handler
       @connection_handler = connection_handler
-      @parser = Bitcoin::Protocol::Parser.new(@connection_handler)
+      @parser = Bitcoin::Protocol::Parser.new(self)
     end
 
     # https://en.bitcoin.it/wiki/Protocol_documentation#version
     def transmit_version_message fields
+      puts "Transmitting..."
+      pp fields
       payload = [
         fields.values_at(:version, :services, :time).pack("VQQ"),
         Bitcoin::PackingHelper::pack_address_field(fields[:from]),
@@ -30,6 +34,12 @@ module Bitcoin
 
     def receive_packets data
       @parser.parse(data)
+    end
+
+    def receive_version_message fields
+      puts "Receiving..."
+      pp fields
+      exit
     end
 
     private
