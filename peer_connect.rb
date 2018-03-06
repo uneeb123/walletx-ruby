@@ -1,82 +1,28 @@
-# encoding: ascii-8bit
-
 require 'eventmachine'
 require 'socket'
 require 'digest/sha2'
 
-require_relative 'protocol/parser'
+require_relative 'network/transreceiver'
 
 module Bitcoin
 
   PROTOCOL_VERSION = 70001
   NODE_NETWORK = 1
 
-  class NetworkHelper
-    MAGIC_HEAD = "\xF9\xBE\xB4\xD9"
-    BINARY = Encoding.find('ASCII-8BIT')
-
-    def self.pack_address_field(addr_str)
-      host, port = addr_str.split(":")
-      sockaddr = Socket.pack_sockaddr_in(port.to_i, host)
-      port, host = sockaddr[2...4], sockaddr[4...8]
-      [[1].pack("Q"), "\x00"*10, "\xFF\xFF",  host, port].join
-    end
-
-    def self.pack_var_string(payload)
-      pack_var_int(payload.bytesize) + payload
-    end
-
-    def self.pack_var_int(i)
-      if    i <  0xfd;                [      i].pack("C")
-      elsif i <= 0xffff;              [0xfd, i].pack("Cv")
-      elsif i <= 0xffffffff;          [0xfe, i].pack("CV")
-      elsif i <= 0xffffffffffffffff;  [0xff, i].pack("CQ")
-      else raise "int(#{i}) too large!"
-      end
-    end
-
-    def self.pack_boolean(b)
-      (b == true) ? [0xFF].pack("C") : [0x00].pack("C")
-    end
-
-    def self.create_version_message_payload fields
-      payload = [
-        fields.values_at(:version, :services, :time).pack("VQQ"),
-        pack_address_field(fields[:from]),
-        pack_address_field(fields[:to]),
-        fields.values_at(:nonce).pack("Q"),
-        pack_var_string(fields[:user_agent]),
-        fields.values_at(:last_block).pack("V"),
-        pack_boolean(fields[:relay])
-      ].join
-    end
-
-    # https://en.bitcoin.it/wiki/Protocol_documentation#version
-    def self.pkt(command, payload)
-      cmd      = command.ljust(12, "\x00")[0...12]
-      length   = [payload.bytesize].pack("V")
-      checksum = Digest::SHA256.digest(Digest::SHA256.digest(payload))[0...4]
-      pkt      = "".force_encoding(BINARY)
-      pkt << MAGIC_HEAD.force_encoding(BINARY) << cmd.force_encoding(BINARY) << length << checksum << payload.force_encoding(BINARY)
-    end
-  end
-
   class ConnectionHandler < EventMachine::Connection
     def initialize host, port, connections
-      @parser = Bitcoin::Protocol::Parser.new(self)
+      @transreceiver = Bitcoin::Transreceiver.new(self)
       @sockaddr = [port, host]
       @connections = connections
     end
 
     def post_init
       puts "connected with #{@sockaddr[1]}:#{@sockaddr[0]}"
-      EventMachine::schedule { on_handshake_begin }
+      EventMachine::schedule { handshake_begin }
     end
 
     def receive_data data
-      require 'pry'; binding.pry
-      print "got data: #{data}"
-      # @parser.parse(data)
+      @transreceiver.receive_packets(data)
     end
 
     def unbind
@@ -85,7 +31,7 @@ module Bitcoin
     end
 
     # https://bitcoin.org/en/developer-reference#version
-    def create_version_message
+    def version_message
       fields = {                                                                           
         version: PROTOCOL_VERSION,
         services: NODE_NETWORK,
@@ -97,14 +43,11 @@ module Bitcoin
         user_agent: "/bitcoin-ruby-lite:0.1/",
         relay: true
       }
-      payload = NetworkHelper.create_version_message_payload fields
-      NetworkHelper.pkt("version", payload)
+      @transreceiver.transmit_version_message fields
     end
 
-    def on_handshake_begin
-      packet = create_version_message
-      require 'pry'; binding.pry
-      send_data(packet)
+    def handshake_begin
+      version_message
     end
   end
 end

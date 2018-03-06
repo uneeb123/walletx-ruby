@@ -1,8 +1,15 @@
 # encoding: ascii-8bit
 
+require_relative 'unpacking_helper'
+
 module Bitcoin
+
+  MAGIC_HEAD = "\xF9\xBE\xB4\xD9"
+
   module Protocol
     class Parser
+      include Bitcoin::UnpackingHelper
+
       attr_reader :stats
 
       def initialize(handler=nil)
@@ -15,7 +22,7 @@ module Bitcoin
 
       # handles inv/getdata packets
       def parse_inv(payload, type=:put)
-        count, payload = Protocol.unpack_var_int(payload)
+        count, payload = Bitcoin::UnpackingHelper.unpack_var_int(payload)
         payload.each_byte.each_slice(36).with_index do |i, idx|
           hash = i[4..-1].reverse.pack("C32")
           case i[0]
@@ -38,7 +45,7 @@ module Bitcoin
       end
 
       def parse_addr(payload)
-        count, payload = Protocol.unpack_var_int(payload)
+        count, payload = Bitcoin::UnpackingHelper.unpack_var_int(payload)
         payload.each_byte.each_slice(30) do |i|
           @h.on_addr(Addr.new(i.pack("C*"))) rescue parse_error(:addr, i.pack("C*"))
         end
@@ -47,7 +54,7 @@ module Bitcoin
       def parse_headers(payload)
         return unless @h.respond_to?(:on_headers)
         buf = StringIO.new(payload)
-        count = Protocol.unpack_var_int_from_io(buf)
+        count = Bitcoin::UnpackingHelper.unpack_var_int_from_io(buf)
         headers = count.times.map{
           break if buf.eof?
           b = Block.new; b.parse_data_from_io(buf, header_only=true); b
@@ -64,7 +71,7 @@ module Bitcoin
 
       def parse_getblocks(payload)
         version, payload = payload.unpack('Va*')
-        count,   payload = Protocol.unpack_var_int(payload)
+        count,   payload = Bitcoin::UnpackingHelper.unpack_var_int(payload)
         buf,     payload = payload.unpack("a#{count*32}a*")
         hashes    = buf.each_byte.each_slice(32).map{|i| hash = i.reverse.pack("C32").hth }
         stop_hash = payload[0..32].reverse_hth
@@ -100,8 +107,24 @@ module Bitcoin
       end
 
       def parse_version(payload)
-        @version = Bitcoin::Protocol::Version.parse(payload)
-        @h.on_version(@version)
+        version, services, timestamp, to, from, nonce, payload = payload.unpack("VQQa26a26Qa*")
+        to, from = Bitcoin::UnpackingHelper.unpack_address_field(to), Bitcoin::UnpackingHelper.unpack_address_field(from)
+        user_agent, payload = Bitcoin::UnpackingHelper.unpack_var_string(payload)
+        last_block, payload = payload.unpack("Va*")
+        relay, payload = Bitcoin::UnpackingHelper.unpack_relay_field(version, payload)
+        fields = { 
+          version: version,
+          services: services,
+          time: timestamp,
+          from: from,
+          to: to,
+          nonce: nonce,
+          user_agent: user_agent.to_s,
+          last_block: last_block,
+          relay: relay
+        }
+        require 'pry'; binding.pry
+        # @h.on_version(@version)
       end
 
       def parse_alert(payload)
@@ -123,7 +146,7 @@ module Bitcoin
 
       def handle_notfound_reply(payload)
         return unless @h.respond_to?(:on_notfound)
-        count, payload = Protocol.unpack_var_int(payload)
+        count, payload = Bitcoin::UnpackingHelper.unpack_var_int(payload)
         payload.each_byte.each_slice(36) do |i|
           hash = i[4..-1].reverse.pack("C32")
           case i[0]
@@ -142,7 +165,7 @@ module Bitcoin
       end
 
       def parse_buffer
-        head_magic = Bitcoin::network[:magic_head]
+        head_magic = Bitcoin::MAGIC_HEAD
         head_size  = 24
         return false if @buf.size < head_size
 
