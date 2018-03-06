@@ -15,6 +15,10 @@ module Bitcoin
       @parser = Bitcoin::Protocol::Parser.new(self)
     end
 
+    def receive_packets data
+      @parser.parse(data)
+    end
+
     # https://en.bitcoin.it/wiki/Protocol_documentation#version
     def transmit_version_message fields
       puts "Transmitting..."
@@ -32,14 +36,20 @@ module Bitcoin
       @connection_handler.send_data(packet)
     end
 
-    def receive_packets data
-      @parser.parse(data)
-    end
-
     def receive_version_message fields
       puts "Receiving..."
       pp fields
-      exit
+      transmit_verack_message
+    end
+
+    def transmit_verack_message
+      puts "Transmitting...VerAck"
+      pkt("verack", "")
+    end
+
+    def receive_verack_message
+      puts "Receiving...VerAck"
+      @connection_handler.handshake_complete
     end
 
     private

@@ -6,18 +6,21 @@ require_relative 'network/transreceiver'
 
 module Bitcoin
 
+  MAINNET_PORT = 8333
   PROTOCOL_VERSION = 70001
   NODE_NETWORK = 1
 
   class ConnectionHandler < EventMachine::Connection
-    def initialize host, port, connections
+    def initialize peer_searcher
       @transreceiver = Bitcoin::Transreceiver.new(self)
-      @sockaddr = [port, host]
-      @connections = connections
+      @peer_searcher = peer_searcher
+      @host = peer_searcher.random_address
+      @port = Bitcoin::MAINNET_PORT
+      @sockaddr = [@port, @host]
+      @connected = false
     end
 
     def post_init
-      puts "connected with #{@sockaddr[1]}:#{@sockaddr[0]}"
       EventMachine::schedule { handshake_begin }
     end
 
@@ -26,8 +29,8 @@ module Bitcoin
     end
 
     def unbind
-      puts "Disconnected"
-      exit
+      puts "Disconnected from #{@host}"
+      @peer_searcher.next_attempt
     end
 
     # https://bitcoin.org/en/developer-reference#version
@@ -49,41 +52,79 @@ module Bitcoin
     def handshake_begin
       version_message
     end
+
+    def handshake_complete
+      puts "Connected successfully!"
+      @connected = true
+      exit
+    end
   end
 end
 
-SEEDS = ["seed.bitcoin.sipa.be", "dnsseed.bluematt.me", "dnsseed.bitcoin.dashjr.org", "bitseed.xf2.org", "dnsseed.webbtc.com"]
-MAINNET_PORT = 8333
+module Bitcoin
+  class DeadSeed < StandardError; end
+
+  class PeerSearcher
+    SEEDS = ["seed.bitcoin.sipa.be", "dnsseed.bluematt.me", "dnsseed.bitcoin.dashjr.org", "bitseed.xf2.org", "dnsseed.webbtc.com"]
+
+    attr_reader :random_address
+
+    def initialize
+      @all_seeds = SEEDS.dup
+      @random_seed = nil
+      @all_addresses = nil
+      @random_address = nil
+    end
+
+    def first_attempt
+      find_random_peer
+      puts "Attempting to connect to #{@random_address}"
+      EventMachine::connect(@random_address.to_s, Bitcoin::MAINNET_PORT, Bitcoin::ConnectionHandler, self)
+    end
+
+    def next_attempt
+      @all_addresses.delete(@random_address)
+      if @all_addresses.empty?
+        @all_seeds.delete(@random_seed)
+        find_random_peer
+      else
+        @random_address = @all_addresses.sample
+      end
+      puts "Attempting to connect to #{@random_address}"
+      EventMachine::connect(@random_address.to_s, Bitcoin::MAINNET_PORT, Bitcoin::ConnectionHandler, self)
+    end
+
+    private
+
+    def find_address seed
+      @all_addresses = Resolv::DNS.new.getaddresses(seed)
+      if @all_addresses.empty?
+        raise Bitcoin::DeadSeed.new
+      else
+        @all_addresses.sample
+      end
+    end
+
+    def find_random_peer
+      if @all_seeds.empty?
+        puts "All seeds are dead. Exiting..."
+        exit
+      end
+      @random_seed = @all_seeds.sample
+      puts "Attempting to query seed: #{@random_seed}"
+      begin
+        @random_address = find_address @random_seed
+      rescue DeadSeed
+        puts "Seed: #{@random_seed} is dead. Trying again..."
+        @all_seeds.delete(@random_peer)
+        find_random_peer
+      end
+    end
+  end
+end
 
 # Establishes client connection with peers
 EventMachine::run do
-  connections = []
-  begin
-    all_seeds = SEEDS.dup
-    random_seed = all_seeds.sample
-    addresses = nil
-    loop do
-      addresses = Resolv::DNS.new.getaddresses(random_seed)
-      if addresses != []
-        break
-      end
-      all_seeds.delete(random_seed)
-      if all_seeds.empty?
-        raise "All seeds exhausted"
-      end
-      random_seed = all_seeds.sample
-    end
-    random_peer_addr = addresses.sample
-    peer_host = random_peer_addr.to_s
-  rescue Errno::ECONNREFUSED => e
-    require 'pry'; binding.pry
-    raise e
-  end
-
-  begin
-    EventMachine::connect(peer_host, MAINNET_PORT, Bitcoin::ConnectionHandler, peer_host, MAINNET_PORT, connections)
-  rescue EventMachine::ConnectionError => e
-    require 'pry'; binding.pry
-    raise e
-  end
+  peer_searcher = Bitcoin::PeerSearcher.new
+  peer_searcher.first_attempt
 end
