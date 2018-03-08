@@ -3,6 +3,14 @@
 require_relative 'unpacking_helper'
 
 module Bitcoin
+  class Logger
+    def method_missing(m, *args, &block)
+      puts "Logger does not exist"
+    end
+  end
+end
+
+module Bitcoin
 
   MAGIC_HEAD = "\xF9\xBE\xB4\xD9"
 
