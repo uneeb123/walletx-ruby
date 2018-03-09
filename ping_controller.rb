@@ -2,12 +2,9 @@ require_relative 'controller'
 
 module Bitcoin
   class PingController < Bitcoin::Controller
-    def do_work
-      ping
-    end
-
-    def ping
-      puts "Pinging..."
+    # Connector is passed back to the controller
+    def do_work connector
+      connector.transreceiver.transmit_ping_message
     end
   end
 end

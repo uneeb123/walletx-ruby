@@ -4,6 +4,10 @@ require_relative 'unpacking_helper'
 
 module Bitcoin
   module Logger
+    def create *args
+      puts "Logger does not exist"
+    end
+
     def method_missing(m, *args, &block)
       puts "Logger does not exist"
     end
@@ -101,7 +105,7 @@ module Bitcoin
         when 'verack';   @h.receive_verack_message
         when 'version';  parse_version(payload)
         when 'alert';    parse_alert(payload)
-        when 'ping';     @h.on_ping(payload.unpack("Q")[0])
+        when 'ping';     @h.receive_ping(payload.unpack("Q")[0])
         when 'pong';     @h.on_pong(payload.unpack("Q")[0])
         when 'getblocks';   @h.on_getblocks(*parse_getblocks(payload))  if @h.respond_to?(:on_getblocks)
         when 'getheaders';  @h.on_getheaders(*parse_getblocks(payload))  if @h.respond_to?(:on_getheaders)

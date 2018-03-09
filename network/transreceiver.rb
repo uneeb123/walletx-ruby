@@ -12,7 +12,7 @@ module Bitcoin
     include PackingHelper
 
     def initialize connection_handler
-      @connection_handler = connection_handler
+      @connector = connection_handler
       @parser = Bitcoin::Protocol::Parser.new(self)
     end
 
@@ -34,7 +34,7 @@ module Bitcoin
         Bitcoin::PackingHelper::pack_boolean(fields[:relay])
       ].join
       packet = pkt("version", payload)
-      @connection_handler.send_data(packet)
+      @connector.send_data(packet)
     end
 
     def receive_version_message fields
@@ -45,12 +45,26 @@ module Bitcoin
 
     def transmit_verack_message
       puts "Transmitting...VerAck"
-      pkt("verack", "")
+      packet = pkt("verack", "")
+      @connector.send_data(packet)
     end
 
     def receive_verack_message
       puts "Receiving...VerAck"
-      @connection_handler.handshake_complete
+      @connector.handshake_complete
+    end
+
+    # https://bitcoin.org/en/developer-reference#ping-rpc
+    def transmit_ping_message
+      packet = pkt("ping","")
+      @connector.send_data(packet)
+    end
+
+    def method_missing(m, *args, &block)
+      puts "Looks like unimplemented #{m} was attempted"
+      puts "Arguments passed: #{args}"
+      puts "exiting..."
+      exit
     end
 
     private
