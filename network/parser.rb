@@ -2,14 +2,18 @@
 
 require_relative 'unpacking_helper'
 
+# Monkey patch
 module Bitcoin
-  module Logger
-    def create *args
-      puts "Logger does not exist"
+  class Logger
+    class << self
+      def create *args
+        puts "Dummy logger being created!"
+        self.new
+      end
     end
 
-    def method_missing(m, *args, &block)
-      puts "Logger does not exist"
+    def debug *args
+      puts "Something is logged!"
     end
   end
 end

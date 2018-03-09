@@ -30,7 +30,11 @@ module Bitcoin
     private
 
     def find_address seed
-      @all_addresses = Resolv::DNS.new.getaddresses(seed)
+      begin
+        @all_addresses = Resolv::DNS.new.getaddresses(seed)
+      rescue Errno::ECONNREFUSED
+        raise Bitcoin::DeadSeed.new
+      end
       if @all_addresses.empty?
         raise Bitcoin::DeadSeed.new
       else
