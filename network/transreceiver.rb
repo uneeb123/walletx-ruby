@@ -1,4 +1,5 @@
 require 'pp'
+require 'digest/sha2'
 
 require_relative 'packing_helper'
 require_relative 'parser'

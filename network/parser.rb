@@ -3,7 +3,7 @@
 require_relative 'unpacking_helper'
 
 module Bitcoin
-  class Logger
+  module Logger
     def method_missing(m, *args, &block)
       puts "Logger does not exist"
     end
